@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autonomous Weather Station Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Library MQTT.js untuk koneksi real-time via WebSockets -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <!-- Library Chart.js untuk grafik sumbu X (Waktu) & Y (Nilai) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <header class="header">
+    <div class="header-title">
+      <h1>Autonomous Weather Station</h1>
+      <div class="status-badge">
+        <span class="dot" id="mqtt-dot"></span>
+        <span id="mqtt-status">Menghubungkan ke MQTT Broker...</span>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <!-- 1. Dropdown Action Menu (Adaptasi Uiverse vinodjangid07/bitter-eagle-34) -->
+      <div class="action-dropdown">
+        <button class="dropdown-trigger" type="button" aria-haspopup="true" aria-expanded="false">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+          </svg>
+          <span>Data &amp; Opsi</span>
+          <svg class="chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+
+        <div class="dropdown-menu">
+          <!-- Lihat Datasheet Google Sheets -->
+          <a href="https://docs.google.com/spreadsheets" target="_blank" rel="noopener noreferrer" class="dropdown-item">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
+            <span>Lihat Datasheet</span>
+          </a>
+
+          <!-- Unduh Datasheet (.CSV) -->
+          <button type="button" id="btn-download-csv" class="dropdown-item">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span>Unduh Datasheet (.CSV)</span>
+          </button>
+
+          <div class="dropdown-divider"></div>
+
+          <!-- Reset Log Grafik -->
+          <button type="button" id="btn-clear-history" class="dropdown-item danger">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            <span>Reset Log Grafik</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. Day/Night Theme Switch (Adaptasi Uiverse 00Kubi/hard-goose-47) -->
+      <label class="theme-switch" for="theme-checkbox" title="Ganti Tema Siang/Malam">
+        <input type="checkbox" id="theme-checkbox" checked>
+        <span class="switch-track">
+          <span class="stars">
+            <span class="star s1"></span>
+            <span class="star s2"></span>
+            <span class="star s3"></span>
+          </span>
+          <span class="clouds">
+            <span class="cloud c1"></span>
+            <span class="cloud c2"></span>
+          </span>
+          <span class="switch-thumb">
+            <span class="crater cr1"></span>
+            <span class="crater cr2"></span>
+            <span class="crater cr3"></span>
+          </span>
+        </span>
+      </label>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- 3. Grid Kartu Sensor dengan Dynamic Range Icon (Adaptasi Uiverse zanina-yassine/neat-starfish-50) -->
+    <section class="sensor-grid">
+      <!-- Temperature -->
+      <div class="card" id="card-temp" data-level="normal">
+        <div class="sensor-icon-badge" id="icon-temp">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path>
+          </svg>
+        </div>
+        <div class="card-label">Temperature</div>
+        <div class="card-value"><span id="val-temp">--</span><span class="unit">°C</span></div>
+        <div class="card-status" id="status-temp">Menunggu data</div>
+      </div>
+
+      <!-- Humidity -->
+      <div class="card" id="card-hum" data-level="normal">
+        <div class="sensor-icon-badge" id="icon-hum">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
+          </svg>
+        </div>
+        <div class="card-label">Humidity</div>
+        <div class="card-value"><span id="val-hum">--</span><span class="unit">%</span></div>
+        <div class="card-status" id="status-hum">Menunggu data</div>
+      </div>
+
+      <!-- Pressure -->
+      <div class="card" id="card-press" data-level="normal">
+        <div class="sensor-icon-badge" id="icon-press">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 12l4-4"></path>
+            <path d="M12 6v2"></path>
+          </svg>
+        </div>
+        <div class="card-label">Pressure</div>
+        <div class="card-value"><span id="val-press">--</span><span class="unit">hPa</span></div>
+        <div class="card-status" id="status-press">Menunggu data</div>
+      </div>
+
+      <!-- Wind Speed -->
+      <div class="card" id="card-wind" data-level="normal">
+        <div class="sensor-icon-badge" id="icon-wind">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"></path>
+          </svg>
+        </div>
+        <div class="card-label">Wind Speed</div>
+        <div class="card-value"><span id="val-windspd">--</span><span class="unit">m/s</span></div>
+        <div class="card-status" id="status-wind">Menunggu data</div>
+      </div>
+
+      <!-- Wind Direction -->
+      <div class="card" id="card-dir" data-level="normal">
+        <div class="sensor-icon-badge" id="icon-dir">
+          <svg id="compass-needle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 19 21 12 17 5 21 12 2"></polygon>
+          </svg>
+        </div>
+        <div class="card-label">Wind Direction</div>
+        <div class="card-value"><span id="val-winddir">--</span></div>
+        <div class="card-status" id="val-winddeg">0°</div>
+      </div>
+
+      <!-- Rainfall -->
+      <div class="card" id="card-rain" data-level="normal">
+        <div class="sensor-icon-badge" id="icon-rain">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 16.2A4.5 4.5 0 0 0 17.5 8h-1.8A7 7 0 1 0 4 14.9"></path>
+            <path d="M16 14v6"></path>
+            <path d="M8 14v6"></path>
+            <path d="M12 16v6"></path>
+          </svg>
+        </div>
+        <div class="card-label">Rainfall</div>
+        <div class="card-value"><span id="val-rain">--</span><span class="unit">mm</span></div>
+        <div class="card-status" id="status-rain">Menunggu data</div>
+      </div>
+    </section>
+
+    <!-- 4. Segmented Control Filter Waktu (Adaptasi Uiverse juyi_2230/hot-moth-33) -->
+    <section class="filter-bar">
+      <span class="filter-label">Rentang Grafik Historis:</span>
+      
+      <div class="segmented-control">
+        <input type="radio" name="time-range" id="range-all" value="all" checked>
+        <label for="range-all">Semua / Live</label>
+
+        <input type="radio" name="time-range" id="range-1h" value="1h">
+        <label for="range-1h">1 Jam</label>
+
+        <input type="radio" name="time-range" id="range-12h" value="12h">
+        <label for="range-12h">12 Jam</label>
+
+        <input type="radio" name="time-range" id="range-1d" value="1d">
+        <label for="range-1d">1 Hari</label>
+
+        <input type="radio" name="time-range" id="range-1w" value="1w">
+        <label for="range-1w">1 Minggu</label>
+
+        <span class="segmented-glider"></span>
+      </div>
+    </section>
+
+    <!-- 5. Grid Grafik Time-Series (Sumbu X = Waktu, Sumbu Y = Nilai Parameter) -->
+    <section class="charts-grid">
+      <div class="chart-card">
+        <canvas id="chart-temp"></canvas>
+      </div>
+      <div class="chart-card">
+        <canvas id="chart-hum"></canvas>
+      </div>
+      <div class="chart-card">
+        <canvas id="chart-press"></canvas>
+      </div>
+      <div class="chart-card">
+        <canvas id="chart-wind"></canvas>
+      </div>
+      <div class="chart-card">
+        <canvas id="chart-rain"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    Terakhir diperbarui: <span id="last-update">Menunggu data pertama...</span>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
