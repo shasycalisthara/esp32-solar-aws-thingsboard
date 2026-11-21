@@ -338,37 +338,40 @@ document.addEventListener('click', (e) => {
   }
 });
 
-document.getElementById('btn-download-csv').addEventListener('click', () => {
-  if (historyData.length === 0) {
-    alert('Belum ada data telemetry yang terekam untuk diunduh.');
-    return;
-  }
+// Hapus blok lama dan ganti dengan pengecekan aman ini:
+const btnDownloadCsv = document.getElementById('btn-download-csv');
+if (btnDownloadCsv) {
+  btnDownloadCsv.addEventListener('click', () => {
+    if (historyData.length === 0) {
+      alert('Belum ada data telemetry yang terekam untuk diunduh.');
+      return;
+    }
 
-  const headers = ['Waktu', 'Temperature (C)', 'Humidity (%)', 'Pressure (hPa)', 'Wind Speed (m/s)', 'Wind Direction', 'Wind Angle (deg)', 'Rainfall (mm)'];
-  const rows = historyData.map(item => [
-    `"${item.time.toLocaleString('id-ID')}"`,
-    item.temperature ?? '',
-    item.humidity ?? '',
-    item.pressure ?? '',
-    item.wind_speed ?? '',
-    item.wind_direction ?? item.wind_dir ?? '',
-    item.wind_dir_angle ?? '',
-    item.rainfall ?? ''
-  ].join(','));
+    const headers = ['Waktu', 'Temperature (C)', 'Humidity (%)', 'Pressure (hPa)', 'Wind Speed (m/s)', 'Wind Direction', 'Wind Angle (deg)', 'Rainfall (mm)'];
+    const rows = historyData.map(item => [
+      `"${item.time.toLocaleString('id-ID')}"`,
+      item.temperature ?? '',
+      item.humidity ?? '',
+      item.pressure ?? '',
+      item.wind_speed ?? '',
+      item.wind_direction ?? item.wind_dir ?? '',
+      item.wind_dir_angle ?? '',
+      item.rainfall ?? ''
+    ].join(','));
 
-  const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
-  const encodedUri = encodeURI(csvContent);
-  
-  const link = document.createElement('a');
-  const dateStr = new Date().toISOString().slice(0, 10);
-  link.setAttribute('href', encodedUri);
-  link.setAttribute('download', `Datasheet_Cuaca_${dateStr}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  
-  dropdown.classList.remove('open');
-});
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    
+    const link = document.createElement('a');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Datasheet_Cuaca_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    dropdown.classList.remove('open');
+  });
 
 document.getElementById('btn-clear-history').addEventListener('click', () => {
   historyData = [];
