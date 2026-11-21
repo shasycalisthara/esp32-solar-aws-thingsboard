@@ -1,6 +1,6 @@
 // ================= KONFIGURASI =================
-const MQTT_BROKER = '';
-const MQTT_TOPIC  = '';
+const MQTT_BROKER = 'wss://broker.emqx.io:8084/mqtt';
+const MQTT_TOPIC  = 'rofif/cuaca/telemetry';
 const GAS_URL     = 'https://script.google.com/macros/s/AKfycbypkwfXIc_fG5-UeGAskLtSnjV_M5EFYZLRNisUJ-YlqFqt-fYJCQSJMsEdi0oR0ypuMw/exec'; // Opsional: URL Web App Google Apps Script untuk histori awal
 // ===============================================
 
