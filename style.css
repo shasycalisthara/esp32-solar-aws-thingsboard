@@ -366,14 +366,16 @@ body {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  align-items: stretch;
   gap: 18px;
   margin-bottom: 28px;
 }
 
 .sensor-card {
+  box-sizing: border-box;
   flex: 0 0 185px;
   width: 185px;
-  min-height: 195px;
+  height: 205px;
 }
 
 .card {
@@ -605,10 +607,12 @@ body {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  align-items: stretch;
   gap: 20px;
 }
 
 .chart-card {
+  box-sizing: border-box;
   flex: 0 0 440px;
   width: 440px;
 }
@@ -634,6 +638,7 @@ body {
   .sensor-card {
     flex: 0 0 175px;
     width: 175px;
+    height: 195px;
   }
   .chart-card {
     flex: 0 0 340px;
@@ -655,11 +660,11 @@ body {
     left: 0;
   }
   
-  .sensor-card {
+.sensor-card {
     flex: 0 0 calc(50% - 10px);
     width: calc(50% - 10px);
+    height: 190px;
   }
-  
   .chart-card {
     flex: 0 0 100%;
     width: 100%;
