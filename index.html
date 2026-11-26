@@ -1,51 +1,51 @@
 <!DOCTYPE html>
 <html lang="id" data-theme="light">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SI-CUACA</title>
+  <title>Autonomous Weather Station Dashboard</title>
   <link rel="stylesheet" href="style.css">
-  <!-- Library MQTT.js untuk koneksi real-time via WebSockets -->
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-  <!-- Library Chart.js untuk grafik sumbu X (Waktu) & Y (Nilai) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
 
+  <!-- Aktifkan tema tersimpan (default: light) secara instan -->
+  <script>
+    const savedTheme = localStorage.getItem('weather_dashboard_theme') || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+  </script>
+
+  <!-- Library Chart.js untuk grafik historis dari Google Sheets -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+  <script src="script.js" defer></script>
+</head>
 <body>
 
   <header class="header">
     <div class="header-title">
       <h1>Autonomous Weather Station</h1>
       <div class="status-badge">
-        <span class="dot" id="mqtt-dot"></span>
-        <span id="mqtt-status">Menghubungkan ke MQTT Broker...</span>
+        <span class="dot" id="sync-dot"></span>
+        <span id="sync-status">Menghubungkan ke Google Sheets...</span>
       </div>
     </div>
 
     <div class="header-actions">
-      <!-- 1. Dropdown Action Menu (Adaptasi Uiverse vinodjangid07/bitter-eagle-34) -->
+      <!-- Dropdown Action Menu -->
       <div class="action-dropdown">
         <button class="dropdown-trigger" type="button" aria-haspopup="true" aria-expanded="false">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
             <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
             <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
           </svg>
           <span>Data &amp; Opsi</span>
-          <svg class="chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <svg class="chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
         </button>
 
         <div class="dropdown-menu">
-          <!-- Lihat Datasheet Google Sheets -->
-          <a href="https://docs.google.com/spreadsheets/d/1UbEcRUf-7golGvdf2KQOVKHmK5PcfLyI6tUeZblwrlg/edit?usp=drive_link" target="_blank" rel="noopener noreferrer"
-            class="dropdown-item">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <!-- Lihat Datasheet Google Sheets (Ganti ID_SPREADSHEET_ANDA) -->
+          <a href="https://docs.google.com/spreadsheets/d/1UbEcRUf-7golGvdf2KQOVKHmK5PcfLyI6tUeZblwrlg/edit?usp=sharing" target="_blank" rel="noopener noreferrer" class="dropdown-item">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
               <polyline points="15 3 21 3 21 9"></polyline>
               <line x1="10" y1="14" x2="21" y2="3"></line>
@@ -53,10 +53,9 @@
             <span>Lihat Datasheet</span>
           </a>
 
-          <!-- Unduh Datasheet (.CSV) -->
-          <a href="https://docs.google.com/spreadsheets/d/1UbEcRUf-7golGvdf2KQOVKHmK5PcfLyI6tUeZblwrlg/edit?usp=drive_link" class="dropdown-item">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <!-- Unduh Datasheet (.CSV) Langsung dari Google Sheets (Ganti ID_SPREADSHEET_ANDA) -->
+          <a href="https://docs.google.com/spreadsheets/d/1UbEcRUf-7golGvdf2KQOVKHmK5PcfLyI6tUeZblwrlg/edit?usp=sharing/export?format=csv" class="dropdown-item">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
               <line x1="12" y1="15" x2="12" y2="3"></line>
@@ -66,21 +65,21 @@
 
           <div class="dropdown-divider"></div>
 
-          <!-- Reset Log Grafik -->
-          <button type="button" id="btn-clear-history" class="dropdown-item danger">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="3 6 5 6 21 6"></polyline>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          <!-- Refresh Manual Data dari Spreadsheet -->
+          <button type="button" id="btn-refresh-data" class="dropdown-item">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
             </svg>
-            <span>Reset Log Grafik</span>
+            <span>Perbarui Data Sekarang</span>
           </button>
         </div>
       </div>
 
-      <!-- 2. Day/Night Theme Switch (Adaptasi Uiverse 00Kubi/hard-goose-47) -->
+      <!-- Day/Night Theme Switch (Default: Light) -->
       <label class="theme-switch" for="theme-checkbox" title="Ganti Tema Siang/Malam">
-        <input type="checkbox" id="theme-checkbox" checked>
+        <input type="checkbox" id="theme-checkbox">
         <span class="switch-track">
           <span class="stars">
             <span class="star s1"></span>
@@ -102,13 +101,12 @@
   </header>
 
   <main class="container">
-    <!-- 3. Grid Kartu Sensor dengan Dynamic Range Icon (Adaptasi Uiverse zanina-yassine/neat-starfish-50) -->
+    <!-- Grid Kartu Sensor -->
     <section class="sensor-grid">
       <!-- Temperature -->
       <div class="card" id="card-temp" data-level="normal">
         <div class="sensor-icon-badge" id="icon-temp">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
-            stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path>
           </svg>
         </div>
@@ -120,8 +118,7 @@
       <!-- Humidity -->
       <div class="card" id="card-hum" data-level="normal">
         <div class="sensor-icon-badge" id="icon-hum">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
-            stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
           </svg>
         </div>
@@ -133,8 +130,7 @@
       <!-- Pressure -->
       <div class="card" id="card-press" data-level="normal">
         <div class="sensor-icon-badge" id="icon-press">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
-            stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
             <path d="M12 12l4-4"></path>
             <path d="M12 6v2"></path>
@@ -148,10 +144,8 @@
       <!-- Wind Speed -->
       <div class="card" id="card-wind" data-level="normal">
         <div class="sensor-icon-badge" id="icon-wind">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2">
-            </path>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"></path>
           </svg>
         </div>
         <div class="card-label">Wind Speed</div>
@@ -162,8 +156,7 @@
       <!-- Wind Direction -->
       <div class="card" id="card-dir" data-level="normal">
         <div class="sensor-icon-badge" id="icon-dir">
-          <svg id="compass-needle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-            stroke-linecap="round" stroke-linejoin="round">
+          <svg id="compass-needle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="12 2 19 21 12 17 5 21 12 2"></polygon>
           </svg>
         </div>
@@ -175,8 +168,7 @@
       <!-- Rainfall -->
       <div class="card" id="card-rain" data-level="normal">
         <div class="sensor-icon-badge" id="icon-rain">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
-            stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20 16.2A4.5 4.5 0 0 0 17.5 8h-1.8A7 7 0 1 0 4 14.9"></path>
             <path d="M16 14v6"></path>
             <path d="M8 14v6"></path>
@@ -189,13 +181,17 @@
       </div>
     </section>
 
-    <!-- 4. Segmented Control Filter Waktu (Adaptasi Uiverse juyi_2230/hot-moth-33) -->
+    <!-- Segmented Control Filter Waktu -->
+    <!-- Segmented Control Filter Waktu + Info Rentang Data Aktif -->
     <section class="filter-bar">
-      <span class="filter-label">Rentang Grafik Historis:</span>
-
+      <div class="filter-info">
+        <span class="filter-label">Rentang Grafik Historis</span>
+        <span class="range-badge" id="active-range-text">Data rentang: Memuat...</span>
+      </div>
+      
       <div class="segmented-control">
         <input type="radio" name="time-range" id="range-all" value="all" checked>
-        <label for="range-all">Semua / Live</label>
+        <label for="range-all">Semua Data</label>
 
         <input type="radio" name="time-range" id="range-1h" value="1h">
         <label for="range-1h">1 Jam</label>
@@ -213,7 +209,7 @@
       </div>
     </section>
 
-    <!-- 5. Grid Grafik Time-Series (Sumbu X = Waktu, Sumbu Y = Nilai Parameter) -->
+    <!-- Grid Grafik Time-Series -->
     <section class="charts-grid">
       <div class="chart-card">
         <canvas id="chart-temp"></canvas>
@@ -234,10 +230,8 @@
   </main>
 
   <footer class="footer">
-    Terakhir diperbarui: <span id="last-update">Menunggu data pertama...</span>
+    Terakhir diperbarui: <span id="last-update">Menunggu sinkronisasi Spreadsheet...</span>
   </footer>
 
-  <script src="script.js"></script>
 </body>
-
 </html>
