@@ -363,19 +363,29 @@ body {
 }
 
 .sensor-grid {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: stretch;
-  gap: 18px;
-  margin-bottom: 28px;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  gap: 18px !important;
+  margin-bottom: 28px !important;
 }
 
 .sensor-card {
-  box-sizing: border-box;
-  flex: 0 0 185px;
-  width: 185px;
-  height: 205px;
+  box-sizing: border-box !important;
+  flex: 0 0 185px !important;
+  width: 185px !important;
+  min-width: 185px !important;
+  max-width: 185px !important;
+  height: 205px !important;
+  overflow: hidden !important;
+}
+
+.sensor-card .status-badge,
+.sensor-card [id^="status-"] {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .card {
@@ -636,9 +646,11 @@ body {
 
 @media (max-width: 900px) {
   .sensor-card {
-    flex: 0 0 175px;
-    width: 175px;
-    height: 195px;
+    flex: 0 0 175px !important;
+    width: 175px !important;
+    min-width: 175px !important;
+    max-width: 175px !important;
+    height: 195px !important;
   }
   .chart-card {
     flex: 0 0 340px;
@@ -691,9 +703,13 @@ body {
 
 @media (max-width: 480px) {
   .sensor-card {
-    flex: 1 1 calc(50% - 14px);
-    max-width: none;
+    flex: 0 0 calc(50% - 10px) !important;
+    width: calc(50% - 10px) !important;
+    min-width: calc(50% - 10px) !important;
+    max-width: calc(50% - 10px) !important;
+    height: 190px !important;
   }
+  
   .chart-card {
     flex: 1 1 100%;
     max-width: none;
