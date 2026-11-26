@@ -1,23 +1,140 @@
-// ================= KONFIGURASI =================
-const MQTT_BROKER = 'wss://broker.emqx.io:8084/mqtt';
-const MQTT_TOPIC  = 'rofif/cuaca/telemetry';
-const GAS_URL     = 'https://script.google.com/macros/s/AKfycbypkwfXIc_fG5-UeGAskLtSnjV_M5EFYZLRNisUJ-YlqFqt-fYJCQSJMsEdi0oR0ypuMw/exec'; // Opsional: URL Web App Google Apps Script untuk histori awal
-// ===============================================
+// ================= 1. KONTROL TEMA INDEPENDEN (DEFAULT: LIGHT) =================
+(function initThemeToggle() {
+  const themeCheckbox = document.getElementById('theme-checkbox');
+  const htmlElement = document.documentElement;
+
+  function applyTheme(theme) {
+    const isDark = theme === 'dark';
+    htmlElement.setAttribute('data-theme', theme);
+    if (themeCheckbox) themeCheckbox.checked = isDark;
+    localStorage.setItem('weather_dashboard_theme', theme);
+
+    try {
+      if (typeof charts !== 'undefined' && charts) {
+        const tickColor = isDark ? '#95a5a6' : '#636e72';
+        Object.values(charts).forEach(chart => {
+          if (chart && chart.options) {
+            chart.options.scales.x.ticks.color = tickColor;
+            chart.options.scales.x.title.color = tickColor;
+            chart.options.scales.y.ticks.color = tickColor;
+            chart.options.scales.y.title.color = tickColor;
+            chart.options.plugins.title.color = tickColor;
+            chart.update('none');
+          }
+        });
+      }
+    } catch (e) {}
+  }
+
+  const currentTheme = htmlElement.getAttribute('data-theme') || 'light';
+  applyTheme(currentTheme);
+
+  if (themeCheckbox) {
+    themeCheckbox.addEventListener('change', (e) => {
+      applyTheme(e.target.checked ? 'dark' : 'light');
+    });
+  }
+})();
+
+// ================= 2. KONFIGURASI GOOGLE APPS SCRIPT =================
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbypkwfXIc_fG5-UeGAskLtSnjV_M5EFYZLRNisUJ-YlqFqt-fYJCQSJMsEdi0oR0ypuMw/exec';
+const POLLING_INTERVAL_MS = 10000;
+// ====================================================================
 
 let historyData = [];
 let currentRange = 'all';
 
 function degToCompass(num) {
-  if (typeof num === 'string') return num;
-  const val = Math.floor((num / 45) + 0.5);
+  const deg = Number(num);
+  if (isNaN(deg)) return String(num || '--');
+  const val = Math.floor(((deg % 360) / 45) + 0.5);
   const arr = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
   return arr[(val % 8)];
 }
 
-// ================= INISIALISASI GRAFIK (CHART.JS) =================
+// Konversi huruf arah mata angin (N, NE, E, dst.) ke derajat agar jarum kompas tetap berputar
+function compassToDeg(val) {
+  if (val === undefined || val === null || val === '') return NaN;
+  const num = Number(val);
+  if (!isNaN(num)) return num;
+
+  const dir = String(val).trim().toUpperCase();
+  const map = {
+    'N': 0,     'UTARA': 0,
+    'NNE': 22.5,
+    'NE': 45,   'TIMUR LAUT': 45,
+    'ENE': 67.5,
+    'E': 90,    'TIMUR': 90,
+    'ESE': 112.5,
+    'SE': 135,  'TENGGARA': 135,
+    'SSE': 157.5,
+    'S': 180,   'SELATAN': 180,
+    'SSW': 202.5,
+    'SW': 225,  'BARAT DAYA': 225,
+    'WSW': 247.5,
+    'W': 270,   'BARAT': 270,
+    'WNW': 292.5,
+    'NW': 315,  'BARAT LAUT': 315,
+    'NNW': 337.5
+  };
+  return map[dir] !== undefined ? map[dir] : NaN;
+}
+
+function parseFlexibleTimestamp(raw) {
+  if (raw instanceof Date && !isNaN(raw.getTime())) return raw;
+  if (typeof raw === 'number') return new Date(raw);
+
+  const str = String(raw || '').trim();
+  if (!str) return null;
+
+  const direct = new Date(str);
+  if (!isNaN(direct.getTime())) return direct;
+
+  const match = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[\s,T]+(\d{1,2})[:.](\d{1,2})(?:[:.](\d{1,2}))?)?/);
+  if (match) {
+    const day   = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10) - 1;
+    const year  = parseInt(match[3], 10);
+    const hour  = parseInt(match[4] || '0', 10);
+    const min   = parseInt(match[5] || '0', 10);
+    const sec   = parseInt(match[6] || '0', 10);
+    const d = new Date(year, month, day, hour, min, sec);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  return null;
+}
+
+function formatDateShort(d) {
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${dd}/${mm}/${yy}`;
+}
+
+function formatTimeOnly(d) {
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${min}`;
+}
+
+function isSameCalendarDay(d1, d2) {
+  return d1.getFullYear() === d2.getFullYear() &&
+         d1.getMonth() === d2.getMonth() &&
+         d1.getDate() === d2.getDate();
+}
+
+// ================= 3. INISIALISASI GRAFIK (CHART.JS) =================
+let charts = {};
+
 function createLineChart(canvasId, title, unit, lineColor) {
-  const ctx = document.getElementById(canvasId).getContext('2d');
-  return new Chart(ctx, {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return null;
+
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const tickColor = isDark ? '#95a5a6' : '#636e72';
+
+  return new Chart(canvas.getContext('2d'), {
     type: 'line',
     data: {
       labels: [],
@@ -25,34 +142,62 @@ function createLineChart(canvasId, title, unit, lineColor) {
         label: `${title} (${unit})`,
         data: [],
         borderColor: lineColor,
-        backgroundColor: lineColor + '22',
-        borderWidth: 2.5,
-        pointRadius: 2,
+        backgroundColor: lineColor + '1A',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 5,
         fill: true,
-        tension: 0.35
+        tension: 0.25
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: {
+        mode: 'index',
+        intersect: false
+      },
       plugins: {
         title: {
           display: true,
           text: `${title} (${unit})`,
-          color: '#95a5a6',
+          color: tickColor,
           font: { size: 14, weight: 'bold' }
         },
-        legend: { display: false }
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: function(context) {
+              const idx = context[0].dataIndex;
+              const chartObj = context[0].chart;
+              if (chartObj._fullTimestamps && chartObj._fullTimestamps[idx]) {
+                return chartObj._fullTimestamps[idx];
+              }
+              return context[0].label;
+            }
+          }
+        }
       },
       scales: {
         x: {
-          title: { display: true, text: 'Waktu', color: '#7f8c8d' },
-          ticks: { color: '#7f8c8d', maxTicksLimit: 6 },
+          title: { display: true, text: 'Waktu', color: tickColor },
+          ticks: {
+            color: tickColor,
+            autoSkip: true,
+            autoSkipPadding: 14,
+            maxTicksLimit: 6,
+            maxRotation: 45,
+            minRotation: 45,
+            callback: function(value) {
+              const label = this.getLabelForValue(value);
+              return label ? label : null;
+            }
+          },
           grid: { color: 'rgba(127, 140, 141, 0.1)' }
         },
         y: {
-          title: { display: true, text: unit, color: '#7f8c8d' },
-          ticks: { color: '#7f8c8d' },
+          title: { display: true, text: unit, color: tickColor },
+          ticks: { color: tickColor },
           grid: { color: 'rgba(127, 140, 141, 0.1)' }
         }
       }
@@ -60,7 +205,7 @@ function createLineChart(canvasId, title, unit, lineColor) {
   });
 }
 
-const charts = {
+charts = {
   temp:  createLineChart('chart-temp', 'Temperature', '°C', '#ff7675'),
   hum:   createLineChart('chart-hum', 'Humidity', '%', '#00d2ff'),
   press: createLineChart('chart-press', 'Pressure', 'hPa', '#a29bfe'),
@@ -68,7 +213,7 @@ const charts = {
   rain:  createLineChart('chart-rain', 'Rainfall', 'mm', '#74b9ff')
 };
 
-// ================= EVALUASI LOGO & WARNA BERDASARKAN RANGE =================
+// ================= 4. EVALUASI LOGO & WARNA BERDASARKAN RANGE =================
 const SVG_ICONS = {
   rainClear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`,
   rainLight: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 16.2A4.5 4.5 0 0 0 17.5 8h-1.8A7 7 0 1 0 4 14.9"></path><path d="M12 14v5"></path></svg>`,
@@ -79,8 +224,7 @@ const SVG_ICONS = {
 };
 
 function updateSensorVisuals(data) {
-  // 1. Temperature (°C)
-  if (data.temperature !== undefined) {
+  if (data.temperature !== undefined && data.temperature !== '') {
     const t = Number(data.temperature);
     const card = document.getElementById('card-temp');
     const icon = document.getElementById('icon-temp');
@@ -105,8 +249,7 @@ function updateSensorVisuals(data) {
     }
   }
 
-  // 2. Humidity (%)
-  if (data.humidity !== undefined) {
+  if (data.humidity !== undefined && data.humidity !== '') {
     const h = Number(data.humidity);
     const card = document.getElementById('card-hum');
     const status = document.getElementById('status-hum');
@@ -123,8 +266,7 @@ function updateSensorVisuals(data) {
     }
   }
 
-  // 3. Pressure (hPa)
-  if (data.pressure !== undefined) {
+  if (data.pressure !== undefined && data.pressure !== '') {
     const p = Number(data.pressure);
     const card = document.getElementById('card-press');
     const status = document.getElementById('status-press');
@@ -141,8 +283,7 @@ function updateSensorVisuals(data) {
     }
   }
 
-  // 4. Wind Speed (m/s)
-  if (data.wind_speed !== undefined) {
+  if (data.wind_speed !== undefined && data.wind_speed !== '') {
     const w = Number(data.wind_speed);
     const card = document.getElementById('card-wind');
     const status = document.getElementById('status-wind');
@@ -162,15 +303,16 @@ function updateSensorVisuals(data) {
     }
   }
 
-  // 5. Wind Direction (Rotasi jarum kompas)
-  if (data.wind_dir_angle !== undefined) {
-    const deg = Number(data.wind_dir_angle);
+  // Mendukung arah angin berupa huruf (N, NE, E, dst.) maupun angka derajat
+  if (data.wind_dir_angle !== undefined && data.wind_dir_angle !== '') {
+    const deg = compassToDeg(data.wind_dir_angle);
     const needle = document.getElementById('compass-needle');
-    if (needle) needle.style.transform = `rotate(${deg}deg)`;
+    if (needle && !isNaN(deg)) {
+      needle.style.transform = `rotate(${deg}deg)`;
+    }
   }
 
-  // 6. Rainfall (mm)
-  if (data.rainfall !== undefined) {
+  if (data.rainfall !== undefined && data.rainfall !== '') {
     const r = Number(data.rainfall);
     const card = document.getElementById('card-rain');
     const icon = document.getElementById('icon-rain');
@@ -196,126 +338,134 @@ function updateSensorVisuals(data) {
   }
 }
 
-// ================= UPDATE TAMPILAN & GRAFIK =================
-function updateUI(data, timestamp = new Date()) {
-  if (data.temperature !== undefined) document.getElementById('val-temp').innerText = Number(data.temperature).toFixed(1);
-  if (data.humidity !== undefined)    document.getElementById('val-hum').innerText = Number(data.humidity).toFixed(1);
-  if (data.pressure !== undefined)    document.getElementById('val-press').innerText = Number(data.pressure).toFixed(1);
-  if (data.wind_speed !== undefined)  document.getElementById('val-windspd').innerText = Number(data.wind_speed).toFixed(1);
-  if (data.rainfall !== undefined)    document.getElementById('val-rain').innerText = Number(data.rainfall).toFixed(1);
+// ================= 5. UPDATE TAMPILAN KARTU & GRAFIK =================
+function renderCardsOnly(data, timestamp = new Date()) {
+  if (data.temperature !== undefined && data.temperature !== '') document.getElementById('val-temp').innerText = Number(data.temperature).toFixed(1);
+  if (data.humidity !== undefined && data.humidity !== '')       document.getElementById('val-hum').innerText = Number(data.humidity).toFixed(1);
+  if (data.pressure !== undefined && data.pressure !== '')       document.getElementById('val-press').innerText = Number(data.pressure).toFixed(1);
+  if (data.wind_speed !== undefined && data.wind_speed !== '')   document.getElementById('val-windspd').innerText = Number(data.wind_speed).toFixed(1);
+  if (data.rainfall !== undefined && data.rainfall !== '')       document.getElementById('val-rain').innerText = Number(data.rainfall).toFixed(1);
 
-  if (data.wind_direction !== undefined) {
-    document.getElementById('val-winddir').innerText = degToCompass(data.wind_direction);
-  } else if (data.wind_dir !== undefined) {
-    document.getElementById('val-winddir').innerText = degToCompass(data.wind_dir);
+  if (data.wind_dir_angle !== undefined && data.wind_dir_angle !== '') {
+    const rawDir = String(data.wind_dir_angle).trim();
+    const deg = compassToDeg(rawDir);
+
+    if (!isNaN(Number(rawDir))) {
+      document.getElementById('val-winddir').innerText = degToCompass(Number(rawDir));
+      document.getElementById('val-winddeg').innerText = `${Number(rawDir).toFixed(0)}°`;
+    } else {
+      document.getElementById('val-winddir').innerText = rawDir.toUpperCase();
+      document.getElementById('val-winddeg').innerText = !isNaN(deg) ? `${deg}°` : '--°';
+    }
   }
 
-  if (data.wind_dir_angle !== undefined) {
-    document.getElementById('val-winddeg').innerText = `${data.wind_dir_angle}°`;
-  }
-
-  // Perbarui warna & ikon kartu berdasarkan rentang nilai
   updateSensorVisuals(data);
 
-  historyData.push({ time: timestamp, ...data });
-  if (historyData.length > 500) historyData.shift();
+  const deviceLabel = data.device ? ` (${data.device})` : '';
+  document.getElementById('last-update').innerText = `${formatDateShort(timestamp)} ${formatTimeOnly(timestamp)}${deviceLabel}`;
+}
 
-  document.getElementById('last-update').innerText = timestamp.toLocaleString('id-ID');
-  renderCharts();
+function updateRangeDescription(filtered, latestDate) {
+  const rangeTextEl = document.getElementById('active-range-text');
+  if (!rangeTextEl) return;
+
+  if (!filtered || filtered.length === 0) {
+    rangeTextEl.innerText = 'Data rentang: Tidak ada data';
+    return;
+  }
+
+  const labelMap = {
+    'all': 'Semua Data',
+    '1h':  '1 Jam',
+    '12h': '12 Jam',
+    '1d':  '1 Hari',
+    '1w':  '1 Minggu'
+  };
+
+  const firstDate = filtered[0].time;
+  const lastDate  = filtered[filtered.length - 1].time;
+  const titleTag  = labelMap[currentRange] || 'Semua Data';
+
+  if (isSameCalendarDay(firstDate, lastDate)) {
+    rangeTextEl.innerText = `Data rentang (${titleTag}): ${formatDateShort(firstDate)} pukul ${formatTimeOnly(firstDate)} – ${formatTimeOnly(lastDate)} (${filtered.length} data)`;
+  } else {
+    rangeTextEl.innerText = `Data rentang (${titleTag}): ${formatDateShort(firstDate)} ${formatTimeOnly(firstDate)} – ${formatDateShort(lastDate)} ${formatTimeOnly(lastDate)} (${filtered.length} data)`;
+  }
 }
 
 function renderCharts() {
-  const now = Date.now();
-  const rangeMs = {
-    '1h':  60 * 60 * 1000,
-    '12h': 12 * 60 * 60 * 1000,
-    '1d':  24 * 60 * 60 * 1000,
-    '1w':  7 * 24 * 60 * 60 * 1000
+  if (!historyData || historyData.length === 0) return;
+
+  const latestDate = historyData[historyData.length - 1].time;
+  const latestTime = latestDate.getTime();
+
+  const rangeConfig = {
+    'all': { ms: Infinity,               maxTicks: 6, xTitle: 'Tanggal & Jam' },
+    '1h':  { ms: 60 * 60 * 1000,         maxTicks: 5, xTitle: 'Jam (1 Jam Terakhir)' },
+    '12h': { ms: 12 * 60 * 60 * 1000,    maxTicks: 6, xTitle: 'Jam (12 Jam Terakhir)' },
+    '1d':  { ms: 24 * 60 * 60 * 1000,    maxTicks: 6, xTitle: 'Jam (1 Hari Terakhir)' },
+    '1w':  { ms: 7 * 24 * 60 * 60 * 1000, maxTicks: 8, xTitle: 'Tanggal (1 Minggu)' }
   };
 
-  const filtered = currentRange === 'all' 
-    ? historyData 
-    : historyData.filter(item => (now - item.time.getTime()) <= rangeMs[currentRange]);
+  const cfg = rangeConfig[currentRange] || rangeConfig['all'];
 
+  const filtered = currentRange === 'all'
+    ? historyData
+    : historyData.filter(item => (latestTime - item.time.getTime()) <= cfg.ms);
+
+  updateRangeDescription(filtered, latestDate);
+
+  const fullTimestamps = filtered.map(item => `${formatDateShort(item.time)} ${formatTimeOnly(item.time)}`);
+
+  let lastShownDateStr = '';
   const labels = filtered.map(item => {
-    if (currentRange === '1w' || currentRange === '1d') {
-      return item.time.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) + ' ' +
-             item.time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    const dateStr = formatDateShort(item.time);
+    const timeStr = formatTimeOnly(item.time);
+
+    if (currentRange === '1w') {
+      if (dateStr !== lastShownDateStr) {
+        lastShownDateStr = dateStr;
+        return dateStr;
+      }
+      return '';
     }
-    return item.time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    if (currentRange === '1h' || currentRange === '12h' || currentRange === '1d') {
+      return timeStr;
+    }
+
+    if (dateStr !== lastShownDateStr) {
+      lastShownDateStr = dateStr;
+      return dateStr;
+    }
+    return timeStr;
   });
 
-  charts.temp.data.labels = labels;
-  charts.temp.data.datasets[0].data = filtered.map(d => d.temperature);
-  charts.temp.update('none');
+  const isTilted = (currentRange === 'all' || currentRange === '1w');
 
-  charts.hum.data.labels = labels;
-  charts.hum.data.datasets[0].data = filtered.map(d => d.humidity);
-  charts.hum.update('none');
+  const chartSeriesMap = [
+    { chart: charts.temp,  values: filtered.map(d => Number(d.temperature)) },
+    { chart: charts.hum,   values: filtered.map(d => Number(d.humidity)) },
+    { chart: charts.press, values: filtered.map(d => Number(d.pressure)) },
+    { chart: charts.wind,  values: filtered.map(d => Number(d.wind_speed)) },
+    { chart: charts.rain,  values: filtered.map(d => Number(d.rainfall)) }
+  ];
 
-  charts.press.data.labels = labels;
-  charts.press.data.datasets[0].data = filtered.map(d => d.pressure);
-  charts.press.update('none');
-
-  charts.wind.data.labels = labels;
-  charts.wind.data.datasets[0].data = filtered.map(d => d.wind_speed);
-  charts.wind.update('none');
-
-  charts.rain.data.labels = labels;
-  charts.rain.data.datasets[0].data = filtered.map(d => d.rainfall);
-  charts.rain.update('none');
-}
-
-// ================= KONEKSI MQTT REAL-TIME =================
-const client = mqtt.connect(MQTT_BROKER);
-
-client.on('connect', () => {
-  document.getElementById('mqtt-dot').classList.add('connected');
-  document.getElementById('mqtt-status').innerText = 'MQTT Live Terhubung';
-  client.subscribe(MQTT_TOPIC);
-});
-
-client.on('offline', () => {
-  document.getElementById('mqtt-dot').classList.remove('connected');
-  document.getElementById('mqtt-status').innerText = 'MQTT Terputus (Menghubungkan ulang...)';
-});
-
-client.on('message', (topic, message) => {
-  try {
-    const payload = JSON.parse(message.toString());
-    updateUI(payload, new Date());
-  } catch (err) {
-    console.error('Format JSON tidak valid:', err);
-  }
-});
-
-// ================= INTERAKSI UI (DAY/NIGHT SWITCH) =================
-const themeCheckbox = document.getElementById('theme-checkbox');
-const htmlElement = document.documentElement;
-
-function applyTheme(theme) {
-  const isDark = theme === 'dark';
-  htmlElement.setAttribute('data-theme', theme);
-  themeCheckbox.checked = isDark;
-  localStorage.setItem('weather_dashboard_theme', theme);
-
-  const tickColor = isDark ? '#95a5a6' : '#636e72';
-  Object.values(charts).forEach(chart => {
-    chart.options.scales.x.ticks.color = tickColor;
-    chart.options.scales.y.ticks.color = tickColor;
-    chart.options.plugins.title.color = tickColor;
+  chartSeriesMap.forEach(({ chart, values }) => {
+    if (!chart) return;
+    chart._fullTimestamps = fullTimestamps;
+    chart.options.scales.x.ticks.autoSkip = (currentRange !== '1w');
+    chart.options.scales.x.ticks.maxTicksLimit = cfg.maxTicks;
+    chart.options.scales.x.ticks.minRotation = isTilted ? 45 : 0;
+    chart.options.scales.x.ticks.maxRotation = isTilted ? 45 : 0;
+    chart.options.scales.x.title.text = cfg.xTitle;
+    chart.data.labels = labels;
+    chart.data.datasets[0].data = values;
     chart.update('none');
   });
 }
 
-const savedTheme = localStorage.getItem('weather_dashboard_theme') || 'dark';
-applyTheme(savedTheme);
-
-themeCheckbox.addEventListener('change', (e) => {
-  applyTheme(e.target.checked ? 'dark' : 'light');
-});
-
-// ================= FILTER RENTANG WAKTU (SEGMENTED CONTROL) =================
+// ================= 6. FILTER WAKTU & DROPDOWN AKSI =================
 document.querySelectorAll('input[name="time-range"]').forEach(radio => {
   radio.addEventListener('change', (e) => {
     currentRange = e.target.value;
@@ -323,73 +473,92 @@ document.querySelectorAll('input[name="time-range"]').forEach(radio => {
   });
 });
 
-// ================= LOGIKA DROPDOWN & AKSI DATASHEET =================
 const dropdown = document.querySelector('.action-dropdown');
 const dropdownTrigger = document.querySelector('.dropdown-trigger');
 
-dropdownTrigger.addEventListener('click', (e) => {
-  e.stopPropagation();
-  dropdown.classList.toggle('open');
-});
-
-document.addEventListener('click', (e) => {
-  if (!dropdown.contains(e.target)) {
-    dropdown.classList.remove('open');
-  }
-});
-
-// Hapus blok lama dan ganti dengan pengecekan aman ini:
-const btnDownloadCsv = document.getElementById('btn-download-csv');
-if (btnDownloadCsv) {
-  btnDownloadCsv.addEventListener('click', () => {
-    if (historyData.length === 0) {
-      alert('Belum ada data telemetry yang terekam untuk diunduh.');
-      return;
-    }
-
-    const headers = ['Waktu', 'Temperature (C)', 'Humidity (%)', 'Pressure (hPa)', 'Wind Speed (m/s)', 'Wind Direction', 'Wind Angle (deg)', 'Rainfall (mm)'];
-    const rows = historyData.map(item => [
-      `"${item.time.toLocaleString('id-ID')}"`,
-      item.temperature ?? '',
-      item.humidity ?? '',
-      item.pressure ?? '',
-      item.wind_speed ?? '',
-      item.wind_direction ?? item.wind_dir ?? '',
-      item.wind_dir_angle ?? '',
-      item.rainfall ?? ''
-    ].join(','));
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    
-    const link = document.createElement('a');
-    const dateStr = new Date().toISOString().slice(0, 10);
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Datasheet_Cuaca_${dateStr}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    dropdown.classList.remove('open');
+if (dropdown && dropdownTrigger) {
+  dropdownTrigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dropdown.classList.toggle('open');
   });
 
-document.getElementById('btn-clear-history').addEventListener('click', () => {
-  historyData = [];
-  renderCharts();
-  dropdown.classList.remove('open');
-});
-
-// Opsional: Muat histori awal dari Google Sheets jika GAS_URL diisi
-if (GAS_URL) {
-  fetch(GAS_URL)
-    .then(res => res.json())
-    .then(data => {
-      if (Array.isArray(data)) {
-        data.forEach(row => historyData.push({ time: new Date(row.timestamp), ...row }));
-        if (historyData.length > 0) updateUI(historyData[historyData.length - 1], historyData[historyData.length - 1].time);
-      } else if (data.temperature !== undefined) {
-        updateUI(data, new Date(data.timestamp || Date.now()));
-      }
-    })
-    .catch(err => console.warn('Gagal mengambil histori Sheets:', err));
+  document.addEventListener('click', (e) => {
+    if (!dropdown.contains(e.target)) {
+      dropdown.classList.remove('open');
+    }
+  });
 }
+
+const btnRefreshData = document.getElementById('btn-refresh-data');
+if (btnRefreshData) {
+  btnRefreshData.addEventListener('click', () => {
+    fetchFromGoogleSheets();
+    if (dropdown) dropdown.classList.remove('open');
+  });
+}
+
+// ================= 7. SINKRONISASI DATA GOOGLE APPS SCRIPT =================
+function getColumnValue(row, targetNames) {
+  const keys = Object.keys(row);
+  for (const target of targetNames) {
+    if (row[target] !== undefined) return row[target];
+    const foundKey = keys.find(k => k.trim().toLowerCase() === target.toLowerCase());
+    if (foundKey !== undefined) return row[foundKey];
+  }
+  return undefined;
+}
+
+async function fetchFromGoogleSheets() {
+  const syncDot = document.getElementById('sync-dot');
+  const syncStatus = document.getElementById('sync-status');
+
+  if (!GAS_URL || GAS_URL.includes('TEMPELKAN_URL')) {
+    syncDot.classList.remove('connected');
+    syncStatus.innerText = 'URL Google Apps Script belum diisi';
+    return;
+  }
+
+  try {
+    const response = await fetch(GAS_URL);
+    const result = await response.json();
+    const rows = Array.isArray(result) ? result : (result.data || result.records || [result]);
+
+    syncDot.classList.add('connected');
+    syncStatus.innerText = 'Terhubung ke Google Sheets (ThingsBoard Sync)';
+
+    if (!rows || rows.length === 0) return;
+
+    historyData = [];
+
+    rows.forEach((row, idx) => {
+      const rawTime = getColumnValue(row, ['TimeStamp', 'Timestamp', 'timestamp', 'Waktu']);
+      const parsedTime = parseFlexibleTimestamp(rawTime) || new Date(Date.now() - (rows.length - idx) * 60000);
+
+      historyData.push({
+        time:           parsedTime,
+        device:         getColumnValue(row, ['Device', 'device']),
+        temperature:    getColumnValue(row, ['Temperature (°C)', 'Temperature', 'temperature', 'Suhu']),
+        humidity:       getColumnValue(row, ['Humidity (%)', 'Humidity', 'humidity', 'Kelembaban']),
+        rainfall:       getColumnValue(row, ['Curah Hujan (mm)', 'Rainfall', 'rainfall', 'Curah Hujan']),
+        pressure:       getColumnValue(row, ['Tekanan (hPa)', 'Pressure', 'pressure', 'Tekanan']),
+        wind_dir_angle: getColumnValue(row, ['Wind Direction (°)', 'Wind Direction', 'wind_direction', 'wind_dir', 'wind_dir_angle', 'Arah Angin']),
+        wind_speed:     getColumnValue(row, ['Wind Speed (m/s)', 'Wind Speed', 'wind_speed'])
+      });
+    });
+
+    historyData.sort((a, b) => a.time.getTime() - b.time.getTime());
+
+    const latest = historyData[historyData.length - 1];
+    if (latest) {
+      renderCardsOnly(latest, latest.time);
+      renderCharts();
+    }
+  } catch (err) {
+    syncDot.classList.remove('connected');
+    syncStatus.innerText = 'Gagal menarik data dari Google Sheets';
+    console.error('Error fetch Google Sheets:', err);
+  }
+}
+
+fetchFromGoogleSheets();
+setInterval(fetchFromGoogleSheets, POLLING_INTERVAL_MS);
