@@ -371,9 +371,9 @@ body {
 }
 
 .sensor-card {
-  /* Di desktop muat 6 kartu sejajar, di tablet muat 3x2 atau 4+2 rata tengah */
-  flex: 1 1 160px;
-  max-width: 210px;
+  flex: 0 0 185px;
+  width: 185px;
+  min-height: 195px;
 }
 
 .card {
@@ -609,16 +609,8 @@ body {
 }
 
 .chart-card {
-  flex: 1 1 340px;
-  max-width: 480px;
-  /* Maksimal 3 kolom sejajar dengan lebar identik */
-  background: var(--bg-color);
-  border-radius: var(--card-radius);
-  padding: 20px;
-  box-shadow: 8px 8px 16px var(--shadow-dark),
-    -8px -8px 16px var(--shadow-light);
-  height: 300px;
-  position: relative;
+  flex: 0 0 440px;
+  width: 440px;
 }
 
 /* ================= FOOTER ================= */
@@ -640,8 +632,12 @@ body {
 
 @media (max-width: 900px) {
   .sensor-card {
-    flex: 1 1 150px;
-    max-width: 190px;
+    flex: 0 0 175px;
+    width: 175px;
+  }
+  .chart-card {
+    flex: 0 0 340px;
+    width: 340px;
   }
 }
 
@@ -658,10 +654,15 @@ body {
     right: auto;
     left: 0;
   }
-
-  .sensor-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 14px;
+  
+  .sensor-card {
+    flex: 0 0 calc(50% - 10px);
+    width: calc(50% - 10px);
+  }
+  
+  .chart-card {
+    flex: 0 0 100%;
+    width: 100%;
   }
 
   .card-value {
@@ -680,13 +681,6 @@ body {
   .segmented-control label {
     padding: 8px 4px;
     font-size: 0.75rem;
-  }
-
-  .chart-card {
-    flex: 1 1 100%;
-    max-width: 100%;
-    height: 240px;
-    padding: 14px;
   }
 }
 
